@@ -405,7 +405,7 @@ def payment():
 def dashboard():
     if not session.get('has_paid'):
         return redirect('/payment')
-    return render_template_string(dashboard_template)
+    return redirect('https://zp-cloud.onrender.com')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
