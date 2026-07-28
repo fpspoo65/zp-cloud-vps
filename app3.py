@@ -15,42 +15,22 @@ vm_list = []
 BACKUP_DIR = "/tmp/zp_user_backup"
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
-def check_port_open(port):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(0.5)
-    try:
-        s.connect(('127.0.0.1', port))
-        s.close()
-        return True
-    except:
-        return False
+AVAILABLE_PORTS = [6311, 6312, 6313, 6314]
+used_ports = set()
 
-# ฟังก์ชันรันคำสั่งติดตั้งแอปเสริมและจำลองรัน Desktop จริงบน Termux/Linux
-def install_apps_background(selected_apps, os_choice, novnc_port, vnc_port):
-    commands = ["apt-get update -y"]
-    
-    if "browser" in selected_apps:
-        commands.append("apt-get install -y chromium || apt-get install -y firefox-esr || apt-get install -y dillo")
-        
-    if "server_plugin" in selected_apps:
-        commands.append("apt-get install -y curl wget net-tools htop")
-        
-    if "basic_tools" in selected_apps:
-        commands.append("apt-get install -y nano git unzip zip")
-
-    if os_choice == "Kali":
-        commands.append("apt-get install -y kali-tools-top10 || echo 'Kali base configured'")
-    elif os_choice == "Ubuntu":
-        commands.append("echo 'Ubuntu packages ready'")
-
-    # คำสั่งจำลองเปิด Service VNC/noVNC จริงบนเครื่อง (เชื่อมโยงพอร์ตจริง)
-    commands.append(f"echo 'Starting Desktop service on port {novnc_port}'")
-
+def install_and_start_desktop(os_choice, novnc_port):
+    commands = [
+        "pkg update -y",
+        "pkg install -y x11-repo tigervnc fluxbox python",
+        "pip install websockify",
+        f"vncserver :1 -geometry 1280x720 -depth 24 || true",
+        f"nohup websockify --web /data/data/com.termux/files/usr/share/novnc {novnc_port} localhost:5901 > /dev/null 2>&1 &"
+    ]
     full_cmd = " && ".join(commands)
     try:
         subprocess.run(full_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        print(f"Error installing apps: {e}")
+        print(f"Error starting desktop on Termux: {e}")
 
 dashboard_template = '''
 <!DOCTYPE html>
@@ -77,7 +57,7 @@ dashboard_template = '''
             background-position: center;
             background-attachment: fixed;
             color: #f5f5f7;
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
             margin: 0;
             padding: 12px;
             display: flex;
@@ -93,7 +73,6 @@ dashboard_template = '''
             top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(5, 7, 12, 0.45);
             backdrop-filter: blur(3px);
-            -webkit-backdrop-filter: blur(3px);
             z-index: -1;
         }
 
@@ -102,7 +81,6 @@ dashboard_template = '''
         .top-bar {
             background: var(--bg-glass);
             backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--border-glass);
             border-radius: 16px;
             padding: 12px 18px;
@@ -112,7 +90,6 @@ dashboard_template = '''
             margin-bottom: 12px;
             font-size: 13px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), var(--neon-glow);
-            box-sizing: border-box;
         }
 
         .badge-pro {
@@ -123,22 +100,20 @@ dashboard_template = '''
             border-radius: 20px;
             font-size: 11px;
             font-weight: 700;
-            text-shadow: 0 0 8px rgba(48, 209, 88, 0.6);
         }
 
-        .status-ready { color: var(--neon-green); font-size: 12px; font-weight: 600; text-shadow: 0 0 8px rgba(48, 209, 88, 0.6); }
+        .status-ready { color: var(--neon-green); font-size: 12px; font-weight: 600; }
 
         .card, .terminal-card {
             background: var(--bg-glass);
             backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--border-glass);
             border-radius: 16px;
             padding: 18px;
             margin-bottom: 12px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), var(--neon-glow);
-            box-sizing: border-box;
             width: 100%;
+            box-sizing: border-box;
         }
 
         .section-title {
@@ -146,7 +121,6 @@ dashboard_template = '''
             font-size: 14px;
             font-weight: 700;
             margin-bottom: 14px;
-            text-shadow: 0 0 10px rgba(50, 173, 230, 0.5);
             letter-spacing: 0.5px;
         }
 
@@ -168,57 +142,6 @@ dashboard_template = '''
             margin-top: 6px;
             font-size: 13px;
             outline: none;
-            transition: all 0.3s ease;
-        }
-
-        .form-control:focus {
-            border-color: var(--neon-cyan);
-            box-shadow: 0 0 12px rgba(50, 173, 230, 0.4);
-        }
-
-        .checkbox-container {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-top: 6px;
-        }
-
-        .checkbox-label {
-            background: rgba(10, 14, 23, 0.5);
-            border: 1px solid rgba(56, 189, 248, 0.2);
-            padding: 10px 12px;
-            border-radius: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            cursor: pointer;
-            font-size: 13px;
-            color: #e4e4e7;
-            transition: all 0.2s;
-        }
-
-        .checkbox-label:hover {
-            border-color: var(--neon-cyan);
-            background: rgba(56, 189, 248, 0.08);
-        }
-
-        .checkbox-label input[type="checkbox"] {
-            accent-color: var(--neon-cyan);
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-        }
-
-        .slider-box { margin: 12px 0; }
-        .slider-header { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; color: #d4d4d8; font-weight: 500; }
-        
-        .slider-box input[type=range] {
-            width: 100%;
-            accent-color: var(--neon-cyan);
-            cursor: pointer;
-            height: 6px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 3px;
         }
 
         .btn-create {
@@ -232,12 +155,8 @@ dashboard_template = '''
             cursor: pointer;
             font-size: 14px;
             margin-top: 6px;
-            box-sizing: border-box;
             box-shadow: 0 0 20px rgba(48, 209, 88, 0.5);
-            transition: all 0.2s ease;
         }
-
-        .btn-create:active { transform: scale(0.98); }
 
         .btn-gui {
             padding: 8px 14px;
@@ -247,14 +166,13 @@ dashboard_template = '''
             text-decoration: none;
             display: inline-block;
             margin-top: 6px;
-            cursor: pointer;
             border: none;
             text-align: center;
-            transition: all 0.2s;
         }
 
-        .btn-loading { background: rgba(113, 113, 122, 0.5); color: #d4d4d8; cursor: not-allowed; pointer-events: none; }
         .btn-ready { background: var(--neon-green); color: #05070c; box-shadow: 0 0 15px rgba(48, 209, 88, 0.5); }
+        .btn-unlimited { background: var(--neon-cyan); color: #05070c; box-shadow: 0 0 15px rgba(50, 173, 230, 0.5); }
+        .btn-expired { background: var(--neon-pink); color: #fff; pointer-events: none; }
         
         .btn-delete {
             background: rgba(255, 55, 95, 0.2);
@@ -268,7 +186,6 @@ dashboard_template = '''
             text-decoration: none;
             display: inline-block;
             margin-top: 6px;
-            box-shadow: 0 0 10px rgba(255, 55, 95, 0.2);
         }
 
         .vm-item {
@@ -280,28 +197,18 @@ dashboard_template = '''
             font-size: 12px;
             line-height: 1.6;
             color: var(--neon-cyan);
-            box-shadow: inset 0 0 10px rgba(56, 189, 248, 0.05);
         }
 
-        .installing-box {
+        .timer-badge {
             color: var(--neon-yellow);
             font-weight: 700;
-            text-shadow: 0 0 8px rgba(255, 214, 10, 0.4);
             background: rgba(255, 214, 10, 0.1);
             border: 1px solid rgba(255, 214, 10, 0.3);
-            padding: 8px;
-            border-radius: 8px;
+            padding: 6px;
+            border-radius: 6px;
             text-align: center;
             margin-top: 6px;
         }
-
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 999; justify-content: center; align-items: center; }
-        .modal-box { background: rgba(18, 24, 38, 0.85); border: 1px solid var(--border-glass); border-radius: 20px; padding: 22px; width: 88%; max-width: 340px; text-align: center; box-sizing: border-box; box-shadow: 0 16px 40px rgba(0,0,0,0.6), var(--neon-glow); }
-        .modal-title { color: var(--neon-cyan); font-size: 16px; font-weight: 700; margin-bottom: 10px; text-shadow: 0 0 10px rgba(50, 173, 230, 0.4); }
-        .modal-desc { color: #d4d4d8; font-size: 13px; margin-bottom: 20px; line-height: 1.5; font-weight: 400; }
-        .modal-buttons { display: flex; gap: 10px; }
-        .btn-modal-confirm { flex: 1; background: var(--neon-green); border: none; color: #05070c; padding: 11px; font-weight: 700; border-radius: 12px; cursor: pointer; font-size: 13px; box-shadow: 0 0 15px rgba(48, 209, 88, 0.4); }
-        .btn-modal-cancel { flex: 1; background: rgba(255, 55, 95, 0.2); border: 1px solid rgba(255, 55, 95, 0.4); color: var(--neon-pink); padding: 11px; font-weight: 700; border-radius: 12px; cursor: pointer; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -312,147 +219,89 @@ dashboard_template = '''
         </div>
 
         <div class="card">
-            <div class="section-title">Server Config & OS Setup</div>
+            <div class="section-title">Server Config & Package Setup</div>
             <form id="createForm" method="POST" action="/create-vm">
-                <input type="hidden" name="restore_backup" id="restoreInput" value="no">
-                
                 <div class="form-group">
-                    เลือก OS (ระบบปฏิบัติการ)
-                    <select name="os_choice" class="form-control">
-                        <option value="Ubuntu">Ubuntu (มาตรฐานเสถียร)</option>
-                        <option value="Kali">Kali (สายเจาะระบบ / เพนเทส)</option>
-                        <option value="ZP" selected>ZP (Custom OS พิเศษเฉพาะร้าน ZP Cloud)</option>
+                    เลือกประเภทแพ็กเกจ
+                    <select name="package_type" class="form-control">
+                        <option value="daily">รายวัน (จำกัด 4 นาที)</option>
+                        <option value="weekly">รายสัปดาห์ (ไม่จำกัดเวลา 🟢)</option>
+                        <option value="monthly">รายเดือน (ไม่จำกัดเวลา 🟢)</option>
                     </select>
                 </div>
 
                 <div class="form-group">
-                    เลือกติดตั้งแอปเสริม (ติดตั้งจริงผ่าน Termux)
-                    <div class="checkbox-container">
-                        <label class="checkbox-label">
-                            <span>🌐 Browser (เว็บเบราว์เซอร์พร้อมใช้)</span>
-                            <input type="checkbox" name="apps" value="browser">
-                        </label>
-                        <label class="checkbox-label">
-                            <span>🔌 Server plugin (ปลั๊กอินเซิร์ฟเวอร์เสริม)</span>
-                            <input type="checkbox" name="apps" value="server_plugin">
-                        </label>
-                        <label class="checkbox-label">
-                            <span>💻 คำสั่งพื้นฐาน (Basic Utilities & Tools)</span>
-                            <input type="checkbox" name="apps" value="basic_tools">
-                        </label>
-                    </div>
+                    เลือก OS (ระบบปฏิบัติการ)
+                    <select name="os_choice" class="form-control">
+                        <option value="Ubuntu">Ubuntu (มาตรฐานเสถียร)</option>
+                        <option value="Kali">Kali (สายเจาะระบบ)</option>
+                        <option value="ZP" selected>ZP (Custom OS พิเศษ)</option>
+                    </select>
                 </div>
 
-                <div class="slider-box">
-                    <div class="slider-header">
-                        <span>CPU Cores</span>
-                        <span style="color:var(--neon-cyan); font-weight:700;" id="cpuTxt">5 vCPU</span>
-                    </div>
-                    <input type="range" name="cpu" min="1" max="5" value="5" oninput="document.getElementById('cpuTxt').innerText=this.value+' vCPU'">
-                </div>
-
-                <div class="slider-box">
-                    <div class="slider-header">
-                        <span>RAM</span>
-                        <span style="color:var(--neon-cyan); font-weight:700;" id="ramTxt">5.5 GB</span>
-                    </div>
-                    <input type="range" name="ram" min="1" max="6" step="0.5" value="5.5" oninput="document.getElementById('ramTxt').innerText=this.value+' GB'">
-                </div>
-
-                <button type="button" onclick="checkBackupAndConfirm()" class="btn-create">⚡ สั่งสร้าง Desktop & ติดตั้งจริง</button>
+                <button type="submit" class="btn-create">⚡ สั่งสร้าง Desktop</button>
             </form>
         </div>
 
         <div class="terminal-card">
-            <div class="section-title" style="margin-bottom:8px;">Active VMs Output</div>
+            <div class="section-title" style="margin-bottom:8px;">Active VMs Output (สูงสุด 4 ช่อง)</div>
+            {% if error_msg %}
+                <div style="color:var(--neon-pink); font-size:12px; text-align:center; margin-bottom:10px; font-weight:700;">{{ error_msg }}</div>
+            {% endif %}
+            
             {% if vms %}
                 {% for vm in vms %}
                 <div class="vm-item" id="vm-box-{{ vm.id }}">
+                    • Slot Port: <b style="color:var(--neon-yellow);">127.0.0.1:{{ vm.novnc_port }}</b><br>
+                    • Package: <b style="color:var(--neon-yellow);">{{ vm.package_type | upper }}</b><br>
                     • Selected OS: <b style="color:var(--neon-yellow);">{{ vm.os_choice }}</b><br>
-                    • Installed Apps: <b style="color:#fff;">{{ vm.selected_apps }}</b><br>
-                    <div id="install-status-{{ vm.id }}">
-                        <div class="installing-box" id="timer-box-{{ vm.id }}">⚙️ กำลังเชื่อมต่อและตรวจสอบ Termux...</div>
-                    </div>
-                    <div id="vm-details-{{ vm.id }}" style="display:none; margin-top:6px;">
-                        • Termux Local Port: <b style="color:var(--neon-green);">127.0.0.1:{{ vm.novnc_port }}</b><br>
-                        • Status: <b style="color:var(--neon-green);">Running on Termux Direct</b><br>
-                        • VNC Password: <b style="color:var(--neon-green);">{{ vm.password }}</b><br>
-                        • Specs: <b>{{ vm.cpu }} vCPU / {{ vm.ram }} GB RAM</b><br>
-                        • Desktop User: <b style="color:var(--neon-pink);">{{ vm.username }}</b><br>
+                    
+                    {% if vm.package_type == 'daily' %}
+                        <div class="timer-badge" id="timer-box-{{ vm.id }}">⏳ เวลาใช้งานคงเหลือ: <span id="countdown-sec-{{ vm.id }}">240</span> วินาที</div>
                         <div style="margin-top: 8px;">
-                            <a id="btn-gui-{{ vm.id }}" href="http://127.0.0.1:{{ vm.novnc_port }}" target="_blank" class="btn-gui btn-loading">⏳ กำลังตรวจสอบพอร์ต...</a>
-                            <a href="/delete-vm/{{ vm.id }}" class="btn-delete">🗑️ ลบ VM ออก (ล้างข้อมูล)</a>
+                            <a id="btn-gui-{{ vm.id }}" href="http://127.0.0.1:{{ vm.novnc_port }}" target="_blank" class="btn-gui btn-ready">🖥️ เปิดหน้าจอ Linux GUI</a>
+                            <a href="/delete-vm/{{ vm.id }}" class="btn-delete">🗑️ ปิด / ลบสล็อต</a>
                         </div>
-                    </div>
-                </div>
-                <script>
-                    (function() {
-                        var vmId = "{{ vm.id }}";
-                        var timerBox = document.getElementById("timer-box-" + vmId);
-                        var vmDetails = document.getElementById("vm-details-" + vmId);
-                        var btnGui = document.getElementById("btn-gui-" + vmId);
+                        <script>
+                            (function() {
+                                var vmId = "{{ vm.id }}";
+                                var timeLeft = 240;
+                                var secElem = document.getElementById("countdown-sec-" + vmId);
+                                var timerBox = document.getElementById("timer-box-" + vmId);
+                                var btnGui = document.getElementById("btn-gui-" + vmId);
 
-                        function checkTermuxStatus() {
-                            fetch('/check-status/' + vmId)
-                                .then(res => res.json())
-                                .then(data => {
-                                    if (data.ready) {
-                                        timerBox.style.display = "none";
-                                        vmDetails.style.display = "block";
-                                        btnGui.className = "btn-gui btn-ready";
-                                        btnGui.innerText = "🖥️ เปิดหน้าจอ Linux GUI จริง";
+                                function countdownTimer() {
+                                    if (timeLeft > 0) {
+                                        timeLeft--;
+                                        secElem.innerText = timeLeft;
+                                        setTimeout(countdownTimer, 1000);
                                     } else {
-                                        setTimeout(checkTermuxStatus, 2000); // เช็คซ้ำทุก 2 วินาทีจนกว่า Termux จะพร้อม
+                                        timerBox.innerHTML = "❌ หมดเวลาใช้งานรายวัน (4 นาที)";
+                                        timerBox.style.background = "rgba(255, 55, 95, 0.1)";
+                                        timerBox.style.borderColor = "rgba(255, 55, 95, 0.4)";
+                                        timerBox.style.color = "var(--neon-pink)";
+                                        btnGui.className = "btn-gui btn-expired";
+                                        btnGui.innerText = "🔒 หมดอายุการใช้งาน";
+                                        btnGui.removeAttribute("href");
                                     }
-                                }).catch(err => {
-                                    setTimeout(checkTermuxStatus, 2000);
-                                });
-                        }
-                        checkTermuxStatus();
-                    })();
-                </script>
+                                }
+                                setTimeout(countdownTimer, 1000);
+                            })();
+                        </script>
+                    {% else %}
+                        <div class="timer-badge" style="color:var(--neon-green); background:rgba(48,209,88,0.1); border-color:rgba(48,209,88,0.3);">♾️ แพ็กเกจ VIP (ใช้งานได้ตลอดเวลา)</div>
+                        <div style="margin-top: 8px;">
+                            <a href="http://127.0.0.1:{{ vm.novnc_port }}" target="_blank" class="btn-gui btn-unlimited">🖥️ เปิดหน้าจอ Linux GUI (VIP)</a>
+                            <a href="/delete-vm/{{ vm.id }}" class="btn-delete">🗑️ ปิด / ลบสล็อต</a>
+                        </div>
+                    {% endif %}
+                </div>
                 {% endfor %}
             {% else %}
-                <div style="color: #71717a; font-size: 12px; text-align: center; padding: 10px;">ยังไม่มีการสร้าง VM เลือก OS และแอปเสริมด้านบนแล้วกดสั่งสร้างได้เลย</div>
+                <div style="color: #71717a; font-size: 12px; text-align: center; padding: 10px;">สล็อตว่าง (รองรับสูงสุด 4 พอร์ต)</div>
             {% endif %}
         </div>
     </div>
-
-    <div id="backupModal" class="modal-overlay">
-        <div class="modal-box">
-            <div class="modal-title">💾 ตรวจพบข้อมูลสำรอง</div>
-            <div class="modal-desc">คุณต้องการนำข้อมูลเดิม (เดสก์ท็อปและไฟล์เก่า) กลับมาใส่ในเดสก์ท็อปใหม่นี้เลยหรือไม่?</div>
-            <div class="modal-buttons">
-                <button type="button" class="btn-modal-confirm" onclick="submitCreateVM(true)">ยืนยัน</button>
-                <button type="button" class="btn-modal-cancel" onclick="submitCreateVM(false)">ยกเลิก</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        function checkBackupAndConfirm() {
-            fetch('/check-backup-exist')
-                .then(res => res.json())
-                .then(data => {
-                    if (data.exist) {
-                        document.getElementById('backupModal').style.display = 'flex';
-                    } else {
-                        submitCreateVM(false);
-                    }
-                }).catch(err => {
-                    submitCreateVM(false);
-                });
-        }
-
-        function submitCreateVM(restore) {
-            if (restore) {
-                document.getElementById('restoreInput').value = 'yes';
-            } else {
-                document.getElementById('restoreInput').value = 'no';
-            }
-            document.getElementById('createForm').submit();
-        }
-    </script>
 </body>
 </html>
 '''
@@ -463,56 +312,44 @@ def index():
 
 @app.route('/create-vm', methods=['POST'])
 def create_vm():
+    global vm_list, used_ports
+    
+    if len(vm_list) >= 4:
+        return render_template_string(dashboard_template, vms=vm_list, error_msg="⚠️ สล็อตเต็ม! (เปิดใช้งานครบ 4 พอร์ตแล้ว)")
+
+    available_slot = None
+    for p in AVAILABLE_PORTS:
+        if p not in used_ports:
+            available_slot = p
+            break
+            
+    if not available_slot:
+        return render_template_string(dashboard_template, vms=vm_list, error_msg="⚠️ พอร์ตเต็มทั้ง 4 ช่อง")
+
+    used_ports.add(available_slot)
     os_choice = request.form.get('os_choice', 'Ubuntu')
-    apps = request.form.getlist('apps')
-    cpu = request.form.get('cpu', '5')
-    ram = request.form.get('ram', '5.5')
-    restore_backup = request.form.get('restore_backup', 'no')
-    
+    package_type = request.form.get('package_type', 'daily')
     vm_id = str(random.randint(1000, 9999))
-    password = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
-    username = f"user_{random.randint(10000, 99999)}"
     
-    novnc_port = random.randint(6000, 6500)
-    vnc_port = random.randint(5900, 5999)
-    
-    # สั่งรันติดตั้งเบื้องหลังเชื่อมต่อกับ Termux จริง
-    threading.Thread(target=install_apps_background, args=(apps, os_choice, novnc_port, vnc_port)).start()
+    threading.Thread(target=install_and_start_desktop, args=(os_choice, available_slot)).start()
     
     vm_data = {
         "id": vm_id,
         "os_choice": os_choice,
-        "selected_apps": ", ".join(apps) if apps else "ไม่มีแอปเสริม",
-        "cpu": cpu,
-        "ram": ram,
-        "password": password,
-        "username": username,
-        "novnc_port": novnc_port,
-        "vnc_port": vnc_port
+        "package_type": package_type,
+        "novnc_port": available_slot
     }
     
     vm_list.append(vm_data)
-    # พอกกดสร้างปุ่มเสร็จวิ่งตรงเข้าหน้าแดชบอร์ด/หน้า GUI ทันทีโดยไม่ติดหน้าจ่ายเงิน
     return redirect('/')
-
-@app.route('/check-status/<vm_id>')
-def check_status(vm_id):
-    for vm in vm_list:
-        if vm['id'] == vm_id:
-            # เช็คพอร์ตบน Termux จริง (ถ้าเปิดอยู่จะคืนค่า True ให้ปุ่ม GUI พร้อมกดทันที)
-            is_open = check_port_open(vm['novnc_port'])
-            # จำลองให้พร้อมใช้งานทันทีหลังจากรันคำสั่งติดตั้งเบื้องหลังเสร็จ
-            return jsonify({"ready": True})
-    return jsonify({"ready": False})
-
-@app.route('/check-backup-exist')
-def check_backup_exist():
-    files = os.listdir(BACKUP_DIR)
-    return jsonify({"exist": len(files) > 0})
 
 @app.route('/delete-vm/<vm_id>')
 def delete_vm(vm_id):
-    global vm_list
+    global vm_list, used_ports
+    for vm in vm_list:
+        if vm['id'] == vm_id:
+            used_ports.discard(vm['novnc_port'])
+            
     vm_list = [vm for vm in vm_list if vm['id'] != vm_id]
     return redirect('/')
 
