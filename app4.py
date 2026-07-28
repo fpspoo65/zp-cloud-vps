@@ -170,7 +170,7 @@ packages_template = '''
 </html>
 '''
 
-# 2. หน้าชำระเงิน (ระบบเดิมคงเดิม แต่ปรับ UI ให้ธีมเดียวกันพร้อมดาวตก)
+# 2. หน้าชำระเงิน
 payment_template = '''
 <!DOCTYPE html>
 <html lang="th">
@@ -260,12 +260,12 @@ payment_template = '''
             {% if checked %}
                 <div class="status-box" style="color: #38bdf8;" id="loading-text">🔄 กำลังตรวจสอบซองอั่งเปา (กรุณารอสักครู่)...</div>
                 <script>
-                    // หน่วงเวลา 12 วินาที (12000 มิลลิวินาที) ก่อนเด้งไปหน้า app3.py (พอร์ต 8081)
+                    // หน่วงเวลา 12 วินาที ก่อนเด้งไปที่เว็บ app3.py บน Render
                     setTimeout(() => {
                         document.getElementById('loading-text').style.color = '#22c55e';
                         document.getElementById('loading-text').innerHTML = '✅ ตรวจสอบสำเร็จ! กำลังเข้าสู่ระบบ VPS...';
                         setTimeout(() => {
-                            window.location.href = "http://localhost:8081";
+                            window.location.href = "https://zp-cloud.onrender.com";
                         }, 1000);
                     }, 12000);
                 </script>
@@ -283,7 +283,7 @@ payment_template = '''
 </html>
 '''
 
-# 3. หน้า Dashboard (ตกแต่งธีมกระจกเรืองแสงสวยงาม)
+# 3. หน้า Dashboard
 dashboard_template = '''
 <!DOCTYPE html>
 <html lang="th">
@@ -324,14 +324,13 @@ dashboard_template = '''
     <div class="card">
         <h2>🎉 ยินดีต้อนรับสู่ ZP Cloud</h2>
         <p>สถานะระบบ: เปิดใช้งานเรียบร้อยแล้ว</p>
-        <a href="http://localhost:8081" target="_blank" class="btn">🖥️ เปิดหน้า VPS GUI (app3.py)</a>
+        <a href="https://zp-cloud.onrender.com" target="_blank" class="btn">🖥️ เปิดหน้า VPS GUI (app3.py)</a>
         <a href="/" class="btn btn-back">🔄 กลับหน้าแรก</a>
     </div>
 </body>
 </html>
 '''
 
-# --- Flask Routes (ระบบหลังบ้านและ API จริง ทำงานเหมือนเดิม 100%) ---
 @app.route('/')
 def index():
     return render_template_string(packages_template, show_trial_modal=False)
