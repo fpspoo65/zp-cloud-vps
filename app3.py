@@ -15,22 +15,24 @@ vm_list = []
 BACKUP_DIR = "/tmp/zp_user_backup"
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
+# กำหนดพอร์ตจำลองสำหรับ Linux GUI ทั้งหมด 4 พอร์ต
 AVAILABLE_PORTS = [6311, 6312, 6313, 6314]
 used_ports = set()
 
-def install_and_start_desktop(os_choice, novnc_port):
+# ฟังก์ชันสั่งรัน VNC และ websockify อัตโนมัติใน Termux
+def setup_and_start_vnc(novnc_port):
+    vnc_display = ":" + str(novnc_port - 6310)  # แปลงพอร์ตเป็นเลขจอ เช่น 6311 กลายเป็น :1
+    
     commands = [
-        "pkg update -y",
-        "pkg install -y x11-repo tigervnc fluxbox python",
-        "pip install websockify",
-        f"vncserver :1 -geometry 1280x720 -depth 24 || true",
-        f"nohup websockify --web /data/data/com.termux/files/usr/share/novnc {novnc_port} localhost:5901 > /dev/null 2>&1 &"
+        f"vncserver {vnc_display} -geometry 1280x720 -depth 24 || true",
+        f"nohup websockify --web /data/data/com.termux/files/usr/share/novnc {novnc_port} localhost:590{novnc_port - 6310} > /dev/null 2>&1 &"
     ]
+    
     full_cmd = " && ".join(commands)
     try:
         subprocess.run(full_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        print(f"Error starting desktop on Termux: {e}")
+        print(f"Error starting VNC/websockify: {e}")
 
 dashboard_template = '''
 <!DOCTYPE html>
@@ -239,7 +241,7 @@ dashboard_template = '''
                     </select>
                 </div>
 
-                <button type="submit" class="btn-create">⚡ สั่งสร้าง Desktop</button>
+                <button type="submit" class="btn-create">⚡ สั่งสร้าง Desktop อัตโนมัติ</button>
             </form>
         </div>
 
@@ -259,7 +261,7 @@ dashboard_template = '''
                     {% if vm.package_type == 'daily' %}
                         <div class="timer-badge" id="timer-box-{{ vm.id }}">⏳ เวลาใช้งานคงเหลือ: <span id="countdown-sec-{{ vm.id }}">240</span> วินาที</div>
                         <div style="margin-top: 8px;">
-                            <a id="btn-gui-{{ vm.id }}" href="http://127.0.0.1:{{ vm.novnc_port }}" target="_blank" class="btn-gui btn-ready">🖥️ เปิดหน้าจอ Linux GUI</a>
+                            <a id="btn-gui-{{ vm.id }}" href="http://127.0.0.1:{{ vm.novnc_port }}/vnc.html?host=127.0.0.1&port={{ vm.novnc_port }}" target="_blank" class="btn-gui btn-ready">🖥️ เปิดหน้าจอ Linux GUI</a>
                             <a href="/delete-vm/{{ vm.id }}" class="btn-delete">🗑️ ปิด / ลบสล็อต</a>
                         </div>
                         <script>
@@ -291,7 +293,7 @@ dashboard_template = '''
                     {% else %}
                         <div class="timer-badge" style="color:var(--neon-green); background:rgba(48,209,88,0.1); border-color:rgba(48,209,88,0.3);">♾️ แพ็กเกจ VIP (ใช้งานได้ตลอดเวลา)</div>
                         <div style="margin-top: 8px;">
-                            <a href="http://127.0.0.1:{{ vm.novnc_port }}" target="_blank" class="btn-gui btn-unlimited">🖥️ เปิดหน้าจอ Linux GUI (VIP)</a>
+                            <a href="http://127.0.0.1:{{ vm.novnc_port }}/vnc.html?host=127.0.0.1&port={{ vm.novnc_port }}" target="_blank" class="btn-gui btn-unlimited">🖥️ เปิดหน้าจอ Linux GUI (VIP)</a>
                             <a href="/delete-vm/{{ vm.id }}" class="btn-delete">🗑️ ปิด / ลบสล็อต</a>
                         </div>
                     {% endif %}
@@ -331,7 +333,8 @@ def create_vm():
     package_type = request.form.get('package_type', 'daily')
     vm_id = str(random.randint(1000, 9999))
     
-    threading.Thread(target=install_and_start_desktop, args=(os_choice, available_slot)).start()
+    # สั่งให้ Termux รัน VNC และ websockify ไปที่พอร์ตนั้นๆ ทันทีในเบื้องหลัง
+    threading.Thread(target=setup_and_start_vnc, args=(available_slot,)).start()
     
     vm_data = {
         "id": vm_id,
