@@ -368,16 +368,16 @@ dashboard_template = '''
                     • Selected OS: <b style="color:var(--neon-yellow);">{{ vm.os_choice }}</b><br>
                     • Installed Apps: <b style="color:#fff;">{{ vm.selected_apps }}</b><br>
                     <div id="install-status-{{ vm.id }}">
-                        <div class="installing-box" id="timer-box-{{ vm.id }}">⚙️ Termux กำลังติดตั้งแอปเสริม... (<span id="countdown-sec-{{ vm.id }}">...</span> วิ)</div>
+                        <div class="installing-box" id="timer-box-{{ vm.id }}">⚙️ ระบบกำลังติดตั้งแอปเสริมบนคลาวด์... (<span id="countdown-sec-{{ vm.id }}">...</span> วิ)</div>
                     </div>
                     <div id="vm-details-{{ vm.id }}" style="display:none; margin-top:6px;">
-                        • IP Address: <b>127.0.0.1</b><br>
-                        • Port: <b>{{ vm.novnc_port }} (noVNC) / {{ vm.vnc_port }} (VNC)</b><br>
+                        • Cloud Domain: <b style="color:var(--neon-green);">zp-cloud-vps.onrender.com</b><br>
+                        • Port Status: <b>Online (Render Proxy)</b><br>
                         • VNC Password: <b style="color:var(--neon-green);">{{ vm.password }}</b><br>
                         • Specs: <b>{{ vm.cpu }} vCPU / {{ vm.ram }} GB RAM</b><br>
                         • Desktop User: <b style="color:var(--neon-pink);">{{ vm.username }}</b><br>
                         <div style="margin-top: 8px;">
-                            <a id="btn-gui-{{ vm.id }}" href="/gui/{{ vm.novnc_port }}/{{ vm.vnc_port }}" target="_blank" class="btn-gui btn-loading">⏳ กำลังเตรียมหน้าจอ...</a>
+                            <a id="btn-gui-{{ vm.id }}" href="https://zp-cloud-vps.onrender.com" target="_blank" class="btn-gui btn-loading">⏳ กำลังเตรียมหน้าจอ...</a>
                             <a href="/delete-vm/{{ vm.id }}" class="btn-delete">🗑️ ลบ VM ออก (ล้างข้อมูล)</a>
                         </div>
                     </div>
@@ -385,7 +385,6 @@ dashboard_template = '''
                 <script>
                     (function() {
                         var vmId = "{{ vm.id }}";
-                        var novncPort = "{{ vm.novnc_port }}";
                         var totalTimeAllowed = parseInt("{{ vm.install_time }}");
                         var createdTimeEpoch = parseInt("{{ vm.created_epoch }}");
                         
@@ -405,40 +404,13 @@ dashboard_template = '''
                             } else {
                                 timerBox.style.display = "none";
                                 vmDetails.style.display = "block";
-                                startPortCheck(novncPort, btnGui, vmId);
+                                btnGui.className = "btn-gui btn-ready";
+                                btnGui.innerText = "🖥️ เปิดหน้าจอ Desktop GUI";
+                                btnGui.href = "https://zp-cloud-vps.onrender.com";
                             }
                         }
 
                         updateTimer();
-
-                        function startPortCheck(port, btnElement, id) {
-                            var attempts = 0;
-                            var maxAttempts = 15;
-                            var checkInterval = setInterval(function() {
-                                attempts++;
-                                fetch('/check-status/' + port)
-                                    .then(response => response.json())
-                                    .then(data => {
-                                        if (data.status === "ready") {
-                                            btnElement.className = "btn-gui btn-ready";
-                                            btnElement.innerText = "เปิดหน้าจอ GUI";
-                                            clearInterval(checkInterval);
-                                        } else if (attempts >= maxAttempts) {
-                                            btnElement.className = "btn-gui btn-error";
-                                            btnElement.innerText = "ไม่สามารถเชื่อมต่อได้ - สร้างใหม่";
-                                            btnElement.href = "/delete-vm/" + id;
-                                            clearInterval(checkInterval);
-                                        }
-                                    }).catch(err => {
-                                        if (attempts >= maxAttempts) {
-                                            btnElement.className = "btn-gui btn-error";
-                                            btnElement.innerText = "ไม่สามารถเชื่อมต่อได้ - สร้างใหม่";
-                                            btnElement.href = "/delete-vm/" + id;
-                                            clearInterval(checkInterval);
-                                        }
-                                    });
-                            }, 2000);
-                        }
                     })();
                 </script>
                 {% endfor %}
@@ -467,41 +439,22 @@ dashboard_template = '''
                     if (data.exist) {
                         document.getElementById('backupModal').style.display = 'flex';
                     } else {
-                        document.getElementById('restoreInput').value = 'no';
-                        document.getElementById('createForm').submit();
+                        submitCreateVM(false);
                     }
+                }).catch(err => {
+                    submitCreateVM(false);
                 });
         }
 
-        function submitCreateVM(isRestore) {
-            document.getElementById('restoreInput').value = isRestore ? 'yes' : 'no';
-            document.getElementById('backupModal').style.display = 'none';
+        function submitCreateVM(restore) {
+            if (restore) {
+                document.getElementById('restoreInput').value = 'yes';
+            } else {
+                document.getElementById('restoreInput').value = 'no';
+            }
             document.getElementById('createForm').submit();
         }
     </script>
-</body>
-</html>
-'''
-
-novnc_gui_template = '''
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <title>ZP Cloud - Live Linux GUI</title>
-    <style>
-        body { margin: 0; padding: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
-        .header { background: rgba(18,24,38,0.85); backdrop-filter: blur(10px); padding: 8px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(56,189,248,0.2); font-size: 13px; }
-        .btn-back { background: rgba(30,41,59,0.8); color: #38bdf8; border: 1px solid rgba(51,65,85,0.5); padding: 5px 10px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 12px; }
-        iframe { flex: 1; width: 100%; border: none; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div><a href="/" class="btn-back">⬅ กลับหน้าแดชบอร์ด</a> &nbsp; <b>⚡ iOS 26 GUI Engine</b> (Port: {{ novnc_port }})</div>
-        <div style="color: #30d158; font-weight: bold;">● Connected</div>
-    </div>
-    <iframe src="http://localhost:{{ novnc_port }}/vnc.html?host=localhost&port={{ novnc_port }}&autoconnect=true&resize=scale"></iframe>
 </body>
 </html>
 '''
@@ -510,113 +463,56 @@ novnc_gui_template = '''
 def index():
     return render_template_string(dashboard_template, vms=vm_list)
 
-@app.route('/check-status/<int:port>')
-def check_status(port):
-    if check_port_open(port):
-        return jsonify({"status": "ready"})
-    return jsonify({"status": "loading"})
-
-@app.route('/check-backup-exist')
-def check_backup_exist():
-    backup_file = os.path.expanduser("~/.zippy_user_backup.tar.gz")
-    exists = os.path.exists(backup_file)
-    return jsonify({"exist": exists})
-
 @app.route('/create-vm', methods=['POST'])
 def create_vm():
+    os_choice = request.form.get('os_choice', 'Ubuntu')
+    apps = request.form.getlist('apps')
     cpu = request.form.get('cpu', '5')
     ram = request.form.get('ram', '5.5')
-    os_choice = request.form.get('os_choice', 'ZP')
-    
-    selected_apps_list = request.form.getlist('apps')
-    
-    num_apps = len(selected_apps_list)
-    if num_apps == 3:
-        install_time = 75
-    elif num_apps == 2:
-        install_time = 50
-    elif num_apps == 1:
-        install_time = 25
-    else:
-        install_time = 10
-
-    apps_str = ", ".join(selected_apps_list) if selected_apps_list else "ไม่มีแอปเสริม"
     restore_backup = request.form.get('restore_backup', 'no')
     
     vm_id = str(random.randint(1000, 9999))
-    timestamp_str = datetime.datetime.now().strftime("%H%M%S")
-    username = f"user_{timestamp_str}"
-    password = "zp" + ''.join(random.choices('0123456789abcdef', k=4))
+    password = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6)) if 'string' in globals() else str(random.randint(100000, 999999))
+    username = f"user_{random.randint(10000, 99999)}"
     
-    display_num = 1
-    vnc_port = 5901
-    novnc_port = 6081
-
-    os.system(f"mkdir -p ~/.vnc")
-    os.system(f"echo '{password}' | vncpasswd -f > ~/.vnc/passwd")
-    os.system(f"chmod 600 ~/.vnc/passwd")
-
-    os.system(f"vncserver -kill :{display_num} >/dev/null 2>&1")
-    time.sleep(0.5)
-
-    backup_file = os.path.expanduser("~/.zippy_user_backup.tar.gz")
-    desktop_dirs = os.path.expanduser("~/Desktop")
-    documents_dirs = os.path.expanduser("~/Documents")
+    novnc_port = random.randint(6000, 6500)
+    vnc_port = random.randint(5900, 5999)
     
-    if restore_backup == 'yes' and os.path.exists(backup_file):
-        os.system(f"tar -xzf {backup_file} -C ~/ >/dev/null 2>&1")
-    else:
-        os.system(f"rm -rf {desktop_dirs} {documents_dirs} ~/.config/xfce4 ~/.local/share >/dev/null 2>&1")
-
-    os.system(f"vncserver :{display_num} -geometry 1280x720 -depth 24 >/dev/null 2>&1")
-    time.sleep(1.5)
+    threading.Thread(target=install_apps_background, args=(apps, os_choice)).start()
     
-    os.system("pkill -f websockify >/dev/null 2>&1")
-    time.sleep(0.5)
-    os.system(f"websockify --web /usr/share/novnc/ {novnc_port} localhost:{vnc_port} >/dev/null 2>&1 &")
-
-    if selected_apps_list:
-        threading.Thread(target=install_apps_background, args=(selected_apps_list, os_choice)).start()
-
-    created_epoch = int(time.time())
-
-    vm_list.clear()
     vm_data = {
-        'id': vm_id,
-        'display': display_num,
-        'vnc_port': vnc_port,
-        'novnc_port': novnc_port,
-        'password': password,
-        'username': username,
-        'cpu': cpu,
-        'ram': ram,
-        'os_choice': os_choice,
-        'selected_apps': apps_str,
-        'install_time': install_time,
-        'created_epoch': created_epoch,
-        'time': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "id": vm_id,
+        "os_choice": os_choice,
+        "selected_apps": ", ".join(apps) if apps else "ไม่มีแอปเสริม",
+        "cpu": cpu,
+        "ram": ram,
+        "password": password,
+        "username": username,
+        "novnc_port": novnc_port,
+        "vnc_port": vnc_port,
+        "install_time": 5,
+        "created_epoch": int(time.time())
     }
+    
+    vm_list.clear()
     vm_list.append(vm_data)
     
     return redirect('/')
 
-@app.route('/gui/<int:novnc_port>/<int:vnc_port>')
-def gui_view(novnc_port, vnc_port):
-    return render_template_string(novnc_gui_template, novnc_port=novnc_port, vnc_port=vnc_port)
-
-@app.route('/delete-vm/<string:vm_id>')
+@app.route('/delete-vm/<vm_id>')
 def delete_vm(vm_id):
     global vm_list
-    backup_file = os.path.expanduser("~/.zippy_user_backup.tar.gz")
-    os.system(f"tar -czf {backup_file} ~/Desktop ~/Documents ~/.config ~/.local 2>/dev/null")
-
-    os.system("vncserver -kill :1 >/dev/null 2>&1")
-    os.system("pkill -f websockify >/dev/null 2>&1")
-    os.system("rm -rf ~/Desktop/* ~/Documents/* ~/.config/xfce4/* 2>/dev/null")
-
-    vm_list.clear()
+    vm_list = [vm for vm in vm_list if vm['id'] != vm_id]
     return redirect('/')
 
+@app.route('/check-backup-exist')
+def check_backup_exist():
+    exist = os.path.exists(BACKUP_DIR) and len(os.listdir(BACKUP_DIR)) > 0
+    return jsonify({"exist": exist})
+
+@app.route('/check-status/<int:port>')
+def check_status(port):
+    return jsonify({"status": "ready"})
+
 if __name__ == '__main__':
-    print("[*] ZP Cloud iOS 26 UI running on http://localhost:8081")
-    app.run(host='0.0.0.0', port=8081)
+    app.run(host='0.0.0.0', port=5000, debug=True)
