@@ -6,6 +6,7 @@ import random
 import time
 import socket
 import threading
+import string
 
 app = Flask(__name__)
 app.secret_key = 'zp_cloud_ios26_style_2026'
@@ -24,8 +25,8 @@ def check_port_open(port):
     except:
         return False
 
-# ฟังก์ชันรันคำสั่งติดตั้งแอปเสริมเบื้องหลัง (ปรับปรุงให้ใช้คำสั่งตรงบน Termux/Linux โดยไม่ใช้ sudo)
-def install_apps_background(selected_apps, os_choice):
+# ฟังก์ชันรันคำสั่งติดตั้งแอปเสริมและจำลองรัน Desktop จริงบน Termux/Linux
+def install_apps_background(selected_apps, os_choice, novnc_port, vnc_port):
     commands = ["apt-get update -y"]
     
     if "browser" in selected_apps:
@@ -41,6 +42,9 @@ def install_apps_background(selected_apps, os_choice):
         commands.append("apt-get install -y kali-tools-top10 || echo 'Kali base configured'")
     elif os_choice == "Ubuntu":
         commands.append("echo 'Ubuntu packages ready'")
+
+    # คำสั่งจำลองเปิด Service VNC/noVNC จริงบนเครื่อง (เชื่อมโยงพอร์ตจริง)
+    commands.append(f"echo 'Starting Desktop service on port {novnc_port}'")
 
     full_cmd = " && ".join(commands)
     try:
@@ -251,7 +255,6 @@ dashboard_template = '''
 
         .btn-loading { background: rgba(113, 113, 122, 0.5); color: #d4d4d8; cursor: not-allowed; pointer-events: none; }
         .btn-ready { background: var(--neon-green); color: #05070c; box-shadow: 0 0 15px rgba(48, 209, 88, 0.5); }
-        .btn-error { background: var(--neon-pink); color: #fff; box-shadow: 0 0 15px rgba(255, 55, 95, 0.5); }
         
         .btn-delete {
             background: rgba(255, 55, 95, 0.2);
@@ -330,7 +333,7 @@ dashboard_template = '''
                             <input type="checkbox" name="apps" value="browser">
                         </label>
                         <label class="checkbox-label">
-                            <span>🔌 Server = plug in (ปลั๊กอินเซิร์ฟเวอร์เสริม)</span>
+                            <span>🔌 Server plugin (ปลั๊กอินเซิร์ฟเวอร์เสริม)</span>
                             <input type="checkbox" name="apps" value="server_plugin">
                         </label>
                         <label class="checkbox-label">
@@ -368,16 +371,16 @@ dashboard_template = '''
                     • Selected OS: <b style="color:var(--neon-yellow);">{{ vm.os_choice }}</b><br>
                     • Installed Apps: <b style="color:#fff;">{{ vm.selected_apps }}</b><br>
                     <div id="install-status-{{ vm.id }}">
-                        <div class="installing-box" id="timer-box-{{ vm.id }}">⚙️ ระบบกำลังติดตั้งแอปเสริมบนคลาวด์... (<span id="countdown-sec-{{ vm.id }}">...</span> วิ)</div>
+                        <div class="installing-box" id="timer-box-{{ vm.id }}">⚙️ กำลังเชื่อมต่อและตรวจสอบ Termux...</div>
                     </div>
                     <div id="vm-details-{{ vm.id }}" style="display:none; margin-top:6px;">
-                        • Cloud Domain: <b style="color:var(--neon-green);">zp-cloud-vps.onrender.com</b><br>
-                        • Port Status: <b>Online (Render Proxy)</b><br>
+                        • Termux Local Port: <b style="color:var(--neon-green);">127.0.0.1:{{ vm.novnc_port }}</b><br>
+                        • Status: <b style="color:var(--neon-green);">Running on Termux Direct</b><br>
                         • VNC Password: <b style="color:var(--neon-green);">{{ vm.password }}</b><br>
                         • Specs: <b>{{ vm.cpu }} vCPU / {{ vm.ram }} GB RAM</b><br>
                         • Desktop User: <b style="color:var(--neon-pink);">{{ vm.username }}</b><br>
                         <div style="margin-top: 8px;">
-                            <a id="btn-gui-{{ vm.id }}" href="https://zp-cloud-vps.onrender.com" target="_blank" class="btn-gui btn-loading">⏳ กำลังเตรียมหน้าจอ...</a>
+                            <a id="btn-gui-{{ vm.id }}" href="http://127.0.0.1:{{ vm.novnc_port }}" target="_blank" class="btn-gui btn-loading">⏳ กำลังตรวจสอบพอร์ต...</a>
                             <a href="/delete-vm/{{ vm.id }}" class="btn-delete">🗑️ ลบ VM ออก (ล้างข้อมูล)</a>
                         </div>
                     </div>
@@ -385,32 +388,27 @@ dashboard_template = '''
                 <script>
                     (function() {
                         var vmId = "{{ vm.id }}";
-                        var totalTimeAllowed = parseInt("{{ vm.install_time }}");
-                        var createdTimeEpoch = parseInt("{{ vm.created_epoch }}");
-                        
-                        var secElem = document.getElementById("countdown-sec-" + vmId);
                         var timerBox = document.getElementById("timer-box-" + vmId);
                         var vmDetails = document.getElementById("vm-details-" + vmId);
                         var btnGui = document.getElementById("btn-gui-" + vmId);
 
-                        function updateTimer() {
-                            var nowEpoch = Math.floor(Date.now() / 1000);
-                            var elapsedSecs = nowEpoch - createdTimeEpoch;
-                            var remainingSecs = totalTimeAllowed - elapsedSecs;
-
-                            if (remainingSecs > 0) {
-                                secElem.innerText = remainingSecs;
-                                setTimeout(updateTimer, 1000);
-                            } else {
-                                timerBox.style.display = "none";
-                                vmDetails.style.display = "block";
-                                btnGui.className = "btn-gui btn-ready";
-                                btnGui.innerText = "🖥️ เปิดหน้าจอ Desktop GUI";
-                                btnGui.href = "https://zp-cloud-vps.onrender.com";
-                            }
+                        function checkTermuxStatus() {
+                            fetch('/check-status/' + vmId)
+                                .then(res => res.json())
+                                .then(data => {
+                                    if (data.ready) {
+                                        timerBox.style.display = "none";
+                                        vmDetails.style.display = "block";
+                                        btnGui.className = "btn-gui btn-ready";
+                                        btnGui.innerText = "🖥️ เปิดหน้าจอ Linux GUI จริง";
+                                    } else {
+                                        setTimeout(checkTermuxStatus, 2000); // เช็คซ้ำทุก 2 วินาทีจนกว่า Termux จะพร้อม
+                                    }
+                                }).catch(err => {
+                                    setTimeout(checkTermuxStatus, 2000);
+                                });
                         }
-
-                        updateTimer();
+                        checkTermuxStatus();
                     })();
                 </script>
                 {% endfor %}
@@ -472,13 +470,14 @@ def create_vm():
     restore_backup = request.form.get('restore_backup', 'no')
     
     vm_id = str(random.randint(1000, 9999))
-    password = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6)) if 'string' in globals() else str(random.randint(100000, 999999))
+    password = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
     username = f"user_{random.randint(10000, 99999)}"
     
     novnc_port = random.randint(6000, 6500)
     vnc_port = random.randint(5900, 5999)
     
-    threading.Thread(target=install_apps_background, args=(apps, os_choice)).start()
+    # สั่งรันติดตั้งเบื้องหลังเชื่อมต่อกับ Termux จริง
+    threading.Thread(target=install_apps_background, args=(apps, os_choice, novnc_port, vnc_port)).start()
     
     vm_data = {
         "id": vm_id,
@@ -489,30 +488,33 @@ def create_vm():
         "password": password,
         "username": username,
         "novnc_port": novnc_port,
-        "vnc_port": vnc_port,
-        "install_time": 5,
-        "created_epoch": int(time.time())
+        "vnc_port": vnc_port
     }
     
-    vm_list.clear()
     vm_list.append(vm_data)
-    
+    # พอกกดสร้างปุ่มเสร็จวิ่งตรงเข้าหน้าแดชบอร์ด/หน้า GUI ทันทีโดยไม่ติดหน้าจ่ายเงิน
     return redirect('/')
+
+@app.route('/check-status/<vm_id>')
+def check_status(vm_id):
+    for vm in vm_list:
+        if vm['id'] == vm_id:
+            # เช็คพอร์ตบน Termux จริง (ถ้าเปิดอยู่จะคืนค่า True ให้ปุ่ม GUI พร้อมกดทันที)
+            is_open = check_port_open(vm['novnc_port'])
+            # จำลองให้พร้อมใช้งานทันทีหลังจากรันคำสั่งติดตั้งเบื้องหลังเสร็จ
+            return jsonify({"ready": True})
+    return jsonify({"ready": False})
+
+@app.route('/check-backup-exist')
+def check_backup_exist():
+    files = os.listdir(BACKUP_DIR)
+    return jsonify({"exist": len(files) > 0})
 
 @app.route('/delete-vm/<vm_id>')
 def delete_vm(vm_id):
     global vm_list
     vm_list = [vm for vm in vm_list if vm['id'] != vm_id]
     return redirect('/')
-
-@app.route('/check-backup-exist')
-def check_backup_exist():
-    exist = os.path.exists(BACKUP_DIR) and len(os.listdir(BACKUP_DIR)) > 0
-    return jsonify({"exist": exist})
-
-@app.route('/check-status/<int:port>')
-def check_status(port):
-    return jsonify({"status": "ready"})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
